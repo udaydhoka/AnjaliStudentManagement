@@ -1,62 +1,73 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List
-from .. import models, schemas
 from ..database import get_db
+from .. import schemas, crud
 
-router = APIRouter(
-    prefix="/students",
-    tags=["students"]
-)
+router = APIRouter(prefix="/students", tags=["Students"])
 
-@router.post("/", response_model=schemas.StudentResponse, status_code=status.HTTP_201_CREATED)
+# Create Student
+@router.post("/", response_model=schemas.StudentResponse, status_code=201)
 def create_student(student: schemas.StudentCreate, db: Session = Depends(get_db)):
-    db_student = db.query(models.Student).filter(models.Student.email == student.email).first()
+    db_student = crud.get_student_by_email(db, email=student.email)
     if db_student:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    new_student = models.Student(**student.dict())
-    db.add(new_student)
-    db.commit()
-    db.refresh(new_student)
-    return new_student
+        raise HTTPException(status_code=409, detail="Email already registered")
+    return crud.create_student(db=db, student=student)
 
-@router.get("/", response_model=List[schemas.StudentResponse])
-def get_students(db: Session = Depends(get_db)):
-    return db.query(models.Student).all()
 
+# Get All Students (with Search and Pagination)
+@router.get("/", response_model=list[schemas.StudentResponse])
+def read_students(
+    name: str = Query(None, description="Search students by name"),
+    skip: int = 0, 
+    limit: int = 10, 
+    db: Session = Depends(get_db)
+):
+    students = crud.get_students(db, skip=skip, limit=limit, name=name)
+    return students
+
+
+# Get Student By ID
 @router.get("/{student_id}", response_model=schemas.StudentResponse)
-def get_student(student_id: int, db: Session = Depends(get_db)):
-    db_student = db.query(models.Student).filter(models.Student.id == student_id).first()
-    if not db_student:
+def read_student(student_id: int, db: Session = Depends(get_db)):
+    db_student = crud.get_student(db, student_id=student_id)
+    if db_student is None:
         raise HTTPException(status_code=404, detail="Student not found")
     return db_student
 
+
+# Fetch Student Courses
+@router.get("/{student_id}/courses", response_model=list[schemas.CourseResponse])
+def get_student_courses(student_id: int, db: Session = Depends(get_db)):
+    db_student = crud.get_student(db, student_id=student_id)
+    if not db_student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Get all enrollments for the student and extract courses
+    courses = [enrollment.course for enrollment in db_student.enrollments]
+    return courses
+
+
+# Update Student
 @router.put("/{student_id}", response_model=schemas.StudentResponse)
 def update_student(student_id: int, student: schemas.StudentUpdate, db: Session = Depends(get_db)):
-    db_student = db.query(models.Student).filter(models.Student.id == student_id).first()
-    if not db_student:
+    db_student = crud.get_student(db, student_id=student_id)
+    if db_student is None:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    # Check if new email is already taken by another student
+    # Check if new email conflicts with another student
     if student.email != db_student.email:
-        email_check = db.query(models.Student).filter(models.Student.email == student.email).first()
+        email_check = crud.get_student_by_email(db, email=student.email)
         if email_check:
-            raise HTTPException(status_code=400, detail="Email already registered")
+            raise HTTPException(status_code=409, detail="Email already exists")
 
-    for key, value in student.dict().items():
-        setattr(db_student, key, value)
-    
-    db.commit()
-    db.refresh(db_student)
-    return db_student
+    return crud.update_student(db=db, student_id=student_id, student=student)
 
-@router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+
+# Delete Student
+@router.delete("/{student_id}")
 def delete_student(student_id: int, db: Session = Depends(get_db)):
-    db_student = db.query(models.Student).filter(models.Student.id == student_id).first()
-    if not db_student:
+    db_student = crud.get_student(db, student_id=student_id)
+    if db_student is None:
         raise HTTPException(status_code=404, detail="Student not found")
-    
-    db.delete(db_student)
-    db.commit()
-    return None
+    crud.delete_student(db, student_id=student_id)
+    return {"message": "Student deleted successfully"}

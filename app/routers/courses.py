@@ -1,89 +1,61 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ..database import SessionLocal
-from .. import models, schemas
+from ..database import get_db
+from .. import schemas, crud
 
 router = APIRouter(prefix="/courses", tags=["Courses"])
 
-# Database dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 # Create Course
-@router.post("/", response_model=schemas.CourseResponse)
+@router.post("/", response_model=schemas.CourseResponse, status_code=201)
 def create_course(course: schemas.CourseCreate, db: Session = Depends(get_db)):
-    
-    if not course.name:
-        raise HTTPException(status_code=400, detail="Course name cannot be empty")
-
-    new_course = models.Course(
-        name=course.name,
-        description=course.description
-    )
-
-    db.add(new_course)
-    db.commit()
-    db.refresh(new_course)
-
-    return new_course
+    db_course = crud.get_course_by_name(db, name=course.name)
+    if db_course:
+        raise HTTPException(status_code=409, detail="Course already exists")
+    return crud.create_course(db=db, course=course)
 
 
-# Get All Courses (Pagination)
+# Get All Courses (with Pagination)
 @router.get("/", response_model=list[schemas.CourseResponse])
-def get_courses(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
-
-    skip = (page - 1) * limit
-
-    courses = db.query(models.Course).offset(skip).limit(limit).all()
-
+def read_courses(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    courses = crud.get_courses(db, skip=skip, limit=limit)
     return courses
 
 
-# Get Course by ID
+# Get Course By ID
 @router.get("/{course_id}", response_model=schemas.CourseResponse)
-def get_course(course_id: int, db: Session = Depends(get_db)):
-
-    course = db.query(models.Course).filter(models.Course.id == course_id).first()
-
-    if not course:
+def read_course(course_id: int, db: Session = Depends(get_db)):
+    db_course = crud.get_course(db, course_id=course_id)
+    if db_course is None:
         raise HTTPException(status_code=404, detail="Course not found")
+    return db_course
 
-    return course
+
+# List Students in a Course
+@router.get("/{course_id}/students", response_model=list[schemas.StudentResponse])
+def get_course_students(course_id: int, db: Session = Depends(get_db)):
+    db_course = crud.get_course(db, course_id=course_id)
+    if not db_course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Extract students from enrollments
+    students = [enrollment.student for enrollment in db_course.enrollments]
+    return students
 
 
 # Update Course
 @router.put("/{course_id}", response_model=schemas.CourseResponse)
-def update_course(course_id: int, course: schemas.CourseCreate, db: Session = Depends(get_db)):
-
-    existing_course = db.query(models.Course).filter(models.Course.id == course_id).first()
-
-    if not existing_course:
+def update_course(course_id: limint, course: schemas.CourseUpdate, db: Session = Depends(get_db)):
+    db_course = crud.get_course(db, course_id=course_id)
+    if db_course is None:
         raise HTTPException(status_code=404, detail="Course not found")
-
-    existing_course.name = course.name
-    existing_course.description = course.description
-
-    db.commit()
-    db.refresh(existing_course)
-
-    return existing_course
+    return crud.update_course(db=db, course_id=course_id, course=course)
 
 
 # Delete Course
 @router.delete("/{course_id}")
 def delete_course(course_id: int, db: Session = Depends(get_db)):
-
-    course = db.query(models.Course).filter(models.Course.id == course_id).first()
-
-    if not course:
+    db_course = crud.get_course(db, course_id=course_id)
+    if db_course is None:
         raise HTTPException(status_code=404, detail="Course not found")
-
-    db.delete(course)
-    db.commit()
-
+    crud.delete_course(db, course_id=course_id)
     return {"message": "Course deleted successfully"}

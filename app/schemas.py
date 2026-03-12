@@ -33,9 +33,31 @@ class CourseBase(BaseModel):
 class CourseCreate(CourseBase):
     pass
 
+class CourseUpdate(CourseBase):
+    pass
+
 class CourseResponse(CourseBase):
     id: int
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+# enrollment schema #
+
+class EnrollmentBase(BaseModel):
+    student_id: int
+    course_id: int
+
+class EnrollmentCreate(EnrollmentBase):
+    pass
+
+class EnrollmentResponse(EnrollmentBase):
+    id: int
+    enrolled_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class StudentWithCourses(StudentResponse):
+    enrollments: list[EnrollmentResponse] = []
