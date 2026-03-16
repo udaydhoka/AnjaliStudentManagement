@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel, EmailStr,Field
-from datetime import datatime 
+from datetime import datetime 
 
 class studentcreate(BaseModel):
     name: str 
@@ -12,7 +12,7 @@ class studentresponse(BaseModel):
     name:str
     Email:str
     age:int
-    created_at:datatime
+    created_at:datetime
 
     class config:
         orm_mode = True
