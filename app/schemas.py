@@ -4,13 +4,13 @@ from datetime import datetime
 
 class studentcreate(BaseModel):
     name: str 
-    Email: EmailStr
+    email: EmailStr
     age:int=Field(...,ge=16,le=60)
 
 class studentresponse(BaseModel):
     id: int
     name:str
-    Email:str
+    email:str
     age:int
     created_at:datetime
 
